@@ -13,6 +13,10 @@ $ uv init
 $ uv add google-adk google-genai python-dotenv
 ```
 
+To set up your MCP server, go to [Zapier's MCP setup page](https://zapier.com/mcp).
+
+To create a new Gemini API key, [follow the instructions here](https://aistudio.google.com/app/api-keys).
+
 ## Running the application
 
 To run the application, you'll need to set up a few environment variables. Create a `.env` file in the root of the project and add the following:
