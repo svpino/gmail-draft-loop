@@ -13,7 +13,7 @@ $ uv init
 $ uv add google-adk google-genai python-dotenv
 ```
 
-To set up your MCP server, go to [Zapier's MCP setup page](https://zapier.com/mcp).
+To set up your MCP server, go to [Zapier's MCP setup page](https://bit.ly/4alplzh).
 
 To create a new Gemini API key, [follow the instructions here](https://aistudio.google.com/app/api-keys).
 
