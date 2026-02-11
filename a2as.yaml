@@ -1,0 +1,157 @@
+manifest:
+  version: "0.1.3"
+  schema: https://a2as.org/cert/schema
+  subject:
+    name: svpino/gmail-draft-loop
+    source: https://github.com/svpino/gmail-draft-loop
+    branch: main
+    commit: "a0e32747"
+    scope: [gmail/agent.py, gmail/prompts.py]
+  issued:
+    by: A2AS.org
+    at: '2026-02-11T16:53:53Z'
+    url: https://a2as.org/certified/agents/svpino/gmail-draft-loop
+  signatures:
+    digest: sha256:ldBJAPoxWBWSZz2ambs8bk9SA7nydRmhDmEyO8n8cmU
+    key: ed25519:XouT2iVwJKvqKCayaYooqM7EyBn7unLxfILyg55xCaQ
+    sig: ed25519:-Vv_bKUBzM2T0Ro_CbYDBQTFFmCgxb9AwrtoGWFs_e4SCdQpEL0TMktJLlZcXgVYZA9QZOj73vRZN_l1TcBeBQ
+
+agents:
+  critiquing_agent:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      name: CritiquingAgent
+      include_contents: none
+      instruction: [You are an assistant reviewing a short email draft. Your goal is to provide, constructive feedback., '**Draft
+          to review:**', '```', '{{current_email}}', '```', '## Task:', '1. Review the draft for clarity, engagement, and
+          basic coherence according to the initial', topic (if known)., 2. If you identify 1-2 *clear and actionable* ways
+          the draft could be improved to better capture, 'the topic or enhance reader engagement, provide these specific suggestions
+          concisely.', Output *only* the critique text., '3. If the draft is coherent, addresses the topic adequately for
+          its length, and has no glaring', 'errors or obvious omissions, respond *exactly* with the phrase "NO ISSUES FOUND"
+          and nothing', 'else. It doesn''t need to be perfect, just functionally complete for this stage. Avoid', suggesting
+          purely subjective stylistic preferences if the core is sound., Do not add explanations. Output only the critique
+          or the exact completion phrase.]
+      description: Reviews the current draft, providing critique if clear improvements are needed, otherwise signals completion.
+      output_key: criticism
+  drafting_agent:
+    type: instance
+    models: [gemini-2.5-flash]
+    tools: [exit_loop]
+    params:
+      name: DraftingAgent
+      include_contents: none
+      instruction: [You are an assistant writing and refining an email based on feedback OR exiting the process., 'You want
+          to produce professioal, clear, and engaging emails.', '**Current draft:**', '```', '{{current_email}}', '```', '**Critique/Suggestions:**',
+        '{{criticism}}', '## Task:', 1. Analyze the 'Critique/Suggestions'., '2. If the critique is *exactly* "NO ISSUES FOUND",
+          you MUST call the ''exit_loop'' function.', Do not output any text., '3. If the critique contains actionable feedback,
+          carefully apply the', suggestions to improve the 'Current Email'. Output *only* the refined email text., Do not
+          add explanations. Either output the refined email OR call the exit_loop function.]
+      description: Drafts the email based on critique, or calls exit_loop if critique indicates completion.
+      output_key: current_email
+  email_finder_agent:
+    type: instance
+    models: [gemini-2.5-flash]
+    tools: [McpToolset]
+    mcp: [McpToolset.0]
+    params:
+      name: EmailFinderAgent
+      description: An assistant to automatically find emails.
+      instruction: [You are an email triage agent., 'Your job:', Find the latest email with the subject line that matches
+          the entry from the user and draft, a first response to it., 'To draft the response, read the latest message in the
+          thread, then skim earlier context for', commitments and details. Answer the sender's questions directly., 'Your
+          response should include:', '* A greeting', '* Answer to any questions asked', '* Relevant details from earlier in
+          the thread', '* Clear next step (what you need from them / what happens next)', '* Thank you', 'Output *only* the
+          draft text. Do not include the subject line, instructions or explanations.']
+      output_key: current_email
+  refinement_loop:
+    type: instance
+    params:
+      name: RefinementLoop
+      max_iterations: "3"
+      sub_agents: [critiquing_agent, drafting_agent]
+  replying_agent:
+    type: instance
+    models: [gemini-2.5-flash]
+    tools: [McpToolset.1]
+    mcp: [McpToolset.1]
+    params:
+      name: ReplyingAgent
+      description: An assistant to automatically creates draft replies.
+      instruction: [You are an agent with access to create draft replies to emails., 'Your job:', Find the latest email with
+          the subject line that matches the entry from the user and create a draft, 'reply using the following text:', '```',
+        '{{current_email}}', '```']
+  root_agent:
+    type: instance
+    params:
+      name: EmailAutoResponder
+      description: Finds relevant emails and iteratively drafts replies.
+      sub_agents: [email_finder_agent, refinement_loop, replying_agent]
+
+models:
+  gemini-2.5-flash:
+    type: literal
+    agents: [email_finder_agent, critiquing_agent, drafting_agent, replying_agent]
+
+tools:
+  exit_loop:
+    type: function
+    agents: [drafting_agent]
+  McpToolset:
+    type: mcp
+    agents: [email_finder_agent]
+    params:
+      class: McpToolset
+      mcp_server: McpToolset
+  McpToolset.1:
+    type: mcp
+    agents: [replying_agent]
+    params:
+      class: McpToolset
+      mcp_server: McpToolset.1
+
+mcp:
+  McpToolset.0:
+    type: network
+    url: ZAPIER_MCP
+    agents: [email_finder_agent]
+    params:
+      class: McpToolset
+      connection_type: StreamableHTTPConnectionParams
+      instance: McpToolset
+  McpToolset.1:
+    type: network
+    url: ZAPIER_MCP
+    agents: [replying_agent]
+    params:
+      class: McpToolset
+      connection_type: StreamableHTTPConnectionParams
+
+teams:
+  refinement_loop:
+    type: loop
+    agents: [refinement_loop, critiquing_agent, drafting_agent]
+  root_agent:
+    type: sequential
+    agents: [root_agent, email_finder_agent, refinement_loop, replying_agent]
+
+imports:
+  agent: agent
+  CRITIQUING_INSTRUCTIONS: gmail.prompts.CRITIQUING_INSTRUCTIONS
+  DRAFTING_INSTRUCTIONS: gmail.prompts.DRAFTING_INSTRUCTIONS
+  EMAIL_FINDER_INSTRUCTIONS: gmail.prompts.EMAIL_FINDER_INSTRUCTIONS
+  LlmAgent: google.adk.agents.LlmAgent
+  load_dotenv: dotenv.load_dotenv
+  LoopAgent: google.adk.agents.LoopAgent
+  McpToolset: google.adk.tools.mcp_tool.McpToolset
+  os: os
+  REPLYING_INSTRUCTIONS: gmail.prompts.REPLYING_INSTRUCTIONS
+  SequentialAgent: google.adk.agents.SequentialAgent
+  StreamableHTTPConnectionParams: google.adk.tools.mcp_tool.mcp_session_manager.StreamableHTTPConnectionParams
+  ToolContext: google.adk.tools.tool_context.ToolContext
+
+functions:
+  exit_loop:
+    type: sync
+    module: gmail.agent
+    args: [tool_context]
